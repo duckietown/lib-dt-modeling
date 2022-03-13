@@ -23,3 +23,15 @@ sphinx
 sphinx-rtd-theme
 
 jupyter
+
+# library deps
+opencv-python-headless
+# v1.21.5 is the last numpy supporting Python 3.7
+numpy<=1.21.5
+# v1.7.3 is the last scipy supporting Python 3.7
+scipy<=1.7.3
+reprep~=3.0.0
+transformations~=2021.6.6
+
+matplotlib~=3.5.1
+setuptools~=60.8.2

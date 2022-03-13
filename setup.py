@@ -3,13 +3,13 @@ from setuptools import find_packages, setup
 # :==> Fill in your project data here
 # The package name is the name on PyPI
 # it is not the python module names.
-package_name = "dt-pondcleaner"
-library_webpage = "http://github.com/duckietown/template-library"
-maintainer = "Mack"
-maintainer_email = "admin@duckietown.org"
-short_description = "A short description"
+package_name = "dt-modeling"
+library_webpage = f"http://github.com/duckietown/lib-{package_name}"
+maintainer = "Andrea F. Daniele"
+maintainer_email = "afdaniele@duckietown.org"
+short_description = "Modeling components of Duckietown's autonomy behavior."
 full_description = """
-A longer description.
+Modeling components of the autonomous behavior pipeline running on Duckietown robots.
 """
 
 # Read version from the __init__ file
@@ -29,16 +29,18 @@ def get_version_from_source(filename):
     return version
 
 
-version = get_version_from_source("src/duckietown_pondcleaner/__init__.py")
+version = get_version_from_source(f"src/{package_name.replace('-', '_')}/__init__.py")
 
-# read project dependencies
-# NO - dependencies.txt is for testing dependiences - EVERYTHING PINNED
-# The requirements here must be broad.
-# dependencies_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dependencies.txt')
-# with open(dependencies_file, 'rt') as fin:
-#     dependencies = list(filter(lambda line: not line.startswith('#'), fin.read().splitlines()))
-
-install_requires = []
+install_requires = [
+    # opencv4
+    "opencv-python-headless",
+    # numpy (1.21.5 is the last numpy supporting Python 3.7)
+    "numpy<=1.21.5",
+    # numpy (1.7.3 is the last scipy supporting Python 3.7)
+    "scipy<=1.7.3",
+    "reprep",
+    "transformations~=2021.6.6"
+]
 tests_require = []
 
 # compile description
@@ -55,12 +57,13 @@ description = """
     underline=underline,
 )
 
-console_scripts = [
-    "dt-pc-demo = duckietown_pondcleaner:dt_pc_demo",
-]
+packages = find_packages("./src")
+
+print("The following packages were found:\n\t - " + "\n\t - ".join(packages) + "\n")
+
 # setup package
 setup(
-    name=package_name,
+    name=f"lib-{package_name}",
     author=maintainer,
     author_email=maintainer_email,
     url=library_webpage,
@@ -70,5 +73,4 @@ setup(
     packages=find_packages("./src"),
     long_description=description,
     version=version,
-    entry_points={"console_scripts": console_scripts},
 )
