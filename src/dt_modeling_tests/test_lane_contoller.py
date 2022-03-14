@@ -65,7 +65,7 @@ def test_lateral_error_single():
 def test_lateral_error_multiple():
     controller: ILaneController = _controller()
     d_err = 0.2
-    expected_w = [-1.2, -1.11, -1.17, -1.23]
+    expected_w = [-1.2, -1.26, -1.29, -1.29, -1.29, -1.29, -1.29, -1.29]
     for t, w_exp in enumerate(expected_w):
         controller.update(d_err, 0.0, timestamp=t)
         v, w = controller.compute_commands()

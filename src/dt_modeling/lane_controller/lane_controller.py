@@ -1,5 +1,6 @@
 import time
 from copy import deepcopy
+from threading import Semaphore
 from typing import Tuple, Dict, Optional
 
 import numpy as np
@@ -80,6 +81,8 @@ class PIDLaneController(ILaneController):
                                                   deepcopy(self.DEFAULT_INTEGRAL_BOUNDS)
         self.stop_slowdown: Dict[str, float] = stop_slowdown or \
                                                deepcopy(self.DEFAULT_STOP_SLOWDOWN)
+        # utility objects
+        self._lock: Semaphore = Semaphore()
         # internal state
         self._d_I: float = 0.0
         self._phi_I: float = 0.0
@@ -110,7 +113,7 @@ class PIDLaneController(ILaneController):
             stop_distance (:obj:`float`):   distance to the next the stop, None if unknown
         """
         # compute delta_t across updates
-        timestamp = timestamp or time.time()
+        timestamp = timestamp if timestamp is not None else time.time()
         dt = None if self._prev_timestamp is None else timestamp - self._prev_timestamp
 
         # compute errors with respect to the given trajectory
@@ -165,8 +168,9 @@ class PIDLaneController(ILaneController):
         self._prev_timestamp = timestamp
 
         # store commands
-        self.__v = v
-        self.__w = w
+        with self._lock:
+            self.__v = v
+            self.__w = w
 
     def compute_commands(self) -> Tuple[float, float]:
         """
@@ -175,7 +179,8 @@ class PIDLaneController(ILaneController):
             omega (:obj:`float`):   requested angular velocity in radians/second
 
         """
-        return self.__v, self.__w
+        with self._lock:
+            return self.__v, self.__w
 
     def _compute_velocity(self, stop_distance: Optional[float]):
         """
