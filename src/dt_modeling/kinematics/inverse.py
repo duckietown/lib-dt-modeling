@@ -83,23 +83,20 @@ class InverseKinematics:
 
         return omega_l, omega_r
 
-    def get_wheels_duty_cycle(self, v: float, omega: float) -> Tuple[float, float]:
+    def get_wheels_duty_cycle_from_wheels_speed(self, omega_l: float, omega_r: float) -> \
+            Tuple[float, float]:
         """
-        Maps the given car speeds at the chassis level to duty cycle wheel commands that the robot
-        can execute directly.
+        Maps the given wheel speeds to duty cycle commands that the robot can execute directly.
 
         Args:
-            v (:obj:`float`):       desired linear velocity of the chassis in meters/second
-            omega (:obj:`float`):   desired angular velocity of the chassis in radians/second
+            (:obj:`float`):         rotation speed of the left wheel in radians/second
+            (:obj:`float`):         rotation speed of the right wheel in radians/second
 
         Returns:
             (:obj:`float`):         command to be sent to the left wheel
             (:obj:`float`):         command to be sent to the right wheel
 
         """
-        # get wheels' rotation in radians/second
-        omega_l, omega_r = self.get_wheels_speed(v, omega)
-
         # assuming same motor constants k for both motors
         k_r = k_l = self.k
 
@@ -116,3 +113,22 @@ class InverseKinematics:
         u_l_limited = trim_value(u_l, -self.limit, self.limit)
 
         return u_l_limited, u_r_limited
+
+    def get_wheels_duty_cycle(self, v: float, omega: float) -> Tuple[float, float]:
+        """
+        Maps the given car speeds at the chassis level to duty cycle wheel commands that the robot
+        can execute directly.
+
+        Args:
+            v (:obj:`float`):       desired linear velocity of the chassis in meters/second
+            omega (:obj:`float`):   desired angular velocity of the chassis in radians/second
+
+        Returns:
+            (:obj:`float`):         command to be sent to the left wheel
+            (:obj:`float`):         command to be sent to the right wheel
+
+        """
+        # get wheels' rotation in radians/second
+        omega_l, omega_r = self.get_wheels_speed(v, omega)
+        # map wheel speed to duty cycle values
+        return self.get_wheels_duty_cycle_from_wheels_speed(omega_l, omega_r)
