@@ -40,6 +40,24 @@ class PWM:
             "limit": self.limit,
         }
 
+    def get_wheels_gain(self) -> Tuple[float, float]:
+        """
+        Returns the wheels' gain adjusted by gain and trim.
+
+        Returns:
+            (:obj:`float`):         left wheel's gain
+            (:obj:`float`):         right wheel's gain
+
+        """
+        # assuming same motor constants k for both motors
+        k_r = k_l = self.k
+
+        # adjusting k by gain and trim
+        k_l_inv = (self.gain - self.trim) / k_l
+        k_r_inv = (self.gain + self.trim) / k_r
+
+        return k_l_inv, k_r_inv
+
     def get_wheels_duty_cycle(self, omega_l: float, omega_r: float) -> \
             Tuple[float, float]:
         """
@@ -54,12 +72,8 @@ class PWM:
             (:obj:`float`):         command to be sent to the right wheel
 
         """
-        # assuming same motor constants k for both motors
-        k_r = k_l = self.k
-
         # adjusting k by gain and trim
-        k_l_inv = (self.gain - self.trim) / k_l
-        k_r_inv = (self.gain + self.trim) / k_r
+        k_l_inv, k_r_inv = self.get_wheels_gain()
 
         # conversion from motor rotation rate to duty cycle
         u_r = omega_r * k_r_inv
