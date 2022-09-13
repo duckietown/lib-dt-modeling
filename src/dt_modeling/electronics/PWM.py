@@ -50,7 +50,7 @@ class PWM:
 
         """
         # assuming same motor constants k for both motors
-        k_r = k_l = self.k
+        k_l = k_r = self.k
 
         # adjusting k by gain and trim
         k_l_inv = (self.gain - self.trim) / k_l
@@ -58,8 +58,7 @@ class PWM:
 
         return k_l_inv, k_r_inv
 
-    def get_wheels_duty_cycle(self, omega_l: float, omega_r: float) -> \
-            Tuple[float, float]:
+    def get_wheels_duty_cycle(self, omega_l: float, omega_r: float) -> Tuple[float, float]:
         """
         Maps the given wheel speeds to duty cycle commands that the robot can execute directly.
 
