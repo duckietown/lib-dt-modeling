@@ -29,8 +29,8 @@ class VelocityToPose:
         Performs the calclulation from velocity to pose and publishes a messsage with the result.
 
         Args:
-            v (:obj:`float`):           desired linear velocity of the chassis in meters/second
-            omega (:obj:`float`):       desired angular velocity of the chassis in radians/second
+            v (:obj:`float`):           linear velocity of the chassis in meters/second
+            omega (:obj:`float`):       angular velocity of the chassis in radians/second
             timestamp (:obj:`float`):   timestamp in seconds when the reading was performed, if
                                         None is given, the current time is used
 
