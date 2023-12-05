@@ -65,8 +65,6 @@ class VelocityToPose:
                         y_delta * np.cos(self._pose.theta) + \
                         x_delta * np.sin(self._pose.theta)
 
-                print(dt, x_delta, x_res)
-
                 # update the stored pose
                 self._pose.theta = theta_res
                 self._pose.x = x_res
