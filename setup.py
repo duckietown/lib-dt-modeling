@@ -32,8 +32,7 @@ def get_version_from_source(filename):
 version = get_version_from_source(f"src/{package_name.replace('-', '_')}/__init__.py")
 
 install_requires = [
-    # numpy (1.21.5 is the last numpy supporting Python 3.7)
-    "numpy<=1.21.5",
+    "numpy<=1.26.2",
     "transformations~=2021.6.6"
 ]
 tests_require = []
