@@ -33,7 +33,9 @@ version = get_version_from_source(f"src/{package_name.replace('-', '_')}/__init_
 
 install_requires = [
     "numpy<=1.26.2",
-    "transformations~=2021.6.6"
+    "transformations~=2021.6.6",
+    # needed for the dynamics module
+    "PyGeometry-z6>=2.0.4",
 ]
 tests_require = []
 
