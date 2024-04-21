@@ -32,7 +32,7 @@ def get_version_from_source(filename):
 version = get_version_from_source(f"src/{package_name.replace('-', '_')}/__init__.py")
 
 install_requires = [
-    "numpy<=1.26.2",
+    "numpy<=1.26.4",
     "transformations~=2021.6.6",
     # needed for the dynamics module
     "PyGeometry-z6>=2.0.4",
