@@ -193,7 +193,7 @@ class DynamicModel(GenericKinematicsSE2):
         angular = angular_prev + dt * x_dot_dot[1]
         lateral = 0.0
 
-        linear = [longitudinal, lateral]
+        linear = [longitudinal[0], lateral]
 
         # represent this as se(2)
         commands_se2 = geo.se2_from_linear_angular(linear, angular)
