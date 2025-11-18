@@ -196,7 +196,7 @@ class DynamicModel(GenericKinematicsSE2):
         linear = [longitudinal[0], lateral]
 
         # represent this as se(2)
-        commands_se2 = geo.se2_from_linear_angular(linear, angular)
+        commands_se2 = geo.se2_from_linear_angular(linear, angular[0])
 
         # call the "integrate" function of GenericKinematicsSE2
         s1 = GenericKinematicsSE2.integrate(self, dt, commands_se2)
