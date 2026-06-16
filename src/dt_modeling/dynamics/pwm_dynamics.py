@@ -1,6 +1,9 @@
 # coding=utf-8
 
+import math
+from contextlib import nullcontext
 from dataclasses import dataclass
+from typing import Callable, ContextManager, Optional, Tuple
 
 import geometry as geo
 import numpy as np
@@ -9,7 +12,6 @@ from .dynamics_delay import ApplyDelay
 from .generic_kinematics import GenericKinematicsSE2
 from .platform_dynamics import PlatformDynamicsFactory
 from .types import TSE2value
-from typing import Tuple
 
 __all__ = [
     "DynamicModelParameters",
@@ -17,8 +19,33 @@ __all__ = [
     "PWMCommands",
     "get_DB18_nominal",
     "get_DB18_uncalibrated",
-    "wheel_speed_from_pwm_commands"
+    "wheel_speed_from_pwm_commands",
+    "set_profiler",
 ]
+
+# Optional profiling hook. The library intentionally knows nothing about any
+# concrete profiler implementation; consumers (e.g. the duckiematrix engine)
+# inject one via ``set_profiler``. When none is registered, profiling is a no-op.
+ProfilerFactory = Callable[[str], ContextManager]
+_profiler_factory: Optional[ProfilerFactory] = None
+
+
+def set_profiler(factory: Optional[ProfilerFactory]) -> None:
+    """Register a profiling hook used while integrating the dynamics.
+
+    Args:
+        factory: A callable taking a profiling key and returning a context
+            manager that times the wrapped block (e.g. ``T2Profiler.profile``).
+            Pass ``None`` to disable profiling.
+    """
+    global _profiler_factory
+    _profiler_factory = factory
+
+
+def _profile(key: str) -> ContextManager:
+    if _profiler_factory is None:
+        return nullcontext()
+    return _profiler_factory(key)
 
 
 @dataclass
@@ -126,6 +153,119 @@ class DynamicModel(GenericKinematicsSE2):
     axis_left_obs_rad: float
     axis_right_obs_rad: float
 
+    @staticmethod
+    def _clip_command(value: float) -> float:
+        if value < -1.0:
+            return -1.0
+        if value > 1.0:
+            return 1.0
+        return value
+
+    @staticmethod
+    def _model_acceleration(
+        commands: PWMCommands,
+        parameters: DynamicModelParameters,
+        u: float,
+        w: float,
+    ) -> Tuple[float, float]:
+        motor_right = DynamicModel._clip_command(commands.motor_right)
+        motor_left = DynamicModel._clip_command(commands.motor_left)
+
+        longitudinal_accel = (
+            -parameters.u1 * u
+            - parameters.u2 * w
+            + parameters.u3 * w * w
+            + parameters.u_alpha_r * motor_right
+            + parameters.u_alpha_l * motor_left
+        )
+        angular_accel = (
+            -parameters.w1 * w
+            - parameters.w2 * u
+            - parameters.w3 * u * w
+            + parameters.w_alpha_r * motor_right
+            - parameters.w_alpha_l * motor_left
+        )
+
+        return float(longitudinal_accel), float(angular_accel)
+
+    @staticmethod
+    def _velocity_from_linear_angular(
+        longitudinal: float,
+        angular: float,
+    ) -> geo.se2value:
+        velocity = np.zeros((3, 3), dtype=np.float64)
+        velocity[0, 1] = -angular
+        velocity[1, 0] = angular
+        velocity[0, 2] = longitudinal
+        return velocity
+
+    @staticmethod
+    def _integrate_pose(
+        q0: geo.SE2value,
+        dt: float,
+        longitudinal: float,
+        angular: float,
+    ) -> geo.SE2value:
+        delta_angle = dt * angular
+        delta_distance = dt * longitudinal
+        if abs(delta_angle) < 1e-8:
+            cos_delta = 1.0
+            sin_delta = 0.0
+            body_tx = delta_distance
+            body_ty = 0.0
+        else:
+            sin_delta = math.sin(delta_angle)
+            cos_delta = math.cos(delta_angle)
+            scale = delta_distance / delta_angle
+            body_tx = sin_delta * scale
+            body_ty = (1.0 - cos_delta) * scale
+
+        r00 = float(q0[0, 0])
+        r01 = float(q0[0, 1])
+        tx0 = float(q0[0, 2])
+        r10 = float(q0[1, 0])
+        r11 = float(q0[1, 1])
+        ty0 = float(q0[1, 2])
+
+        q1 = np.empty((3, 3), dtype=np.float64)
+        q1[0, 0] = r00 * cos_delta + r01 * sin_delta
+        q1[0, 1] = -r00 * sin_delta + r01 * cos_delta
+        q1[0, 2] = tx0 + r00 * body_tx + r01 * body_ty
+        q1[1, 0] = r10 * cos_delta + r11 * sin_delta
+        q1[1, 1] = -r10 * sin_delta + r11 * cos_delta
+        q1[1, 2] = ty0 + r10 * body_tx + r11 * body_ty
+        q1[2, 0] = 0.0
+        q1[2, 1] = 0.0
+        q1[2, 2] = 1.0
+        return q1
+
+    def _update_axis_observations(self) -> None:
+        resolution = self.parameters.encoder_resolution_rad
+        left_ticks = round(self.axis_left_rad / resolution)
+        right_ticks = round(self.axis_right_rad / resolution)
+        self.axis_left_obs_rad = left_ticks * resolution
+        self.axis_right_obs_rad = right_ticks * resolution
+
+    @classmethod
+    def _from_state_components(
+        cls,
+        parameters: DynamicModelParameters,
+        q0: geo.SE2value,
+        v0: geo.se2value,
+        t0: float,
+        axis_left_rad: float,
+        axis_right_rad: float,
+    ) -> "DynamicModel":
+        state = cls.__new__(cls)
+        state.parameters = parameters
+        state.q0 = q0
+        state.v0 = v0
+        state.t0 = t0
+        state.axis_left_rad = axis_left_rad
+        state.axis_right_rad = axis_right_rad
+        state._update_axis_observations()
+        return state
+
     def __init__(
         self,
         parameters: DynamicModelParameters,
@@ -139,99 +279,78 @@ class DynamicModel(GenericKinematicsSE2):
 
         self.axis_left_rad = axis_left_rad
         self.axis_right_rad = axis_right_rad
-        resolution = parameters.encoder_resolution_rad
-        left_ticks = int(np.round(axis_left_rad / resolution))
-        right_ticks = int(np.round(axis_right_rad / resolution))
-        self.axis_left_obs_rad = left_ticks * resolution
-        self.axis_right_obs_rad = right_ticks * resolution
+        self._update_axis_observations()
 
     @staticmethod
-    def model(commands: PWMCommands, parameters: DynamicModelParameters, u=None, w=None):
-        """ Returns the second derivative of x"""
-        ## Unpack Inputs
-        U = np.array([commands.motor_right, commands.motor_left])
-        V = U.reshape(U.size, 1)
-        V = np.clip(V, -1, +1)
-        # parameters for autonomous dynamics
-        u1 = parameters.u1
-        u2 = parameters.u2
-        u3 = parameters.u3
-        w1 = parameters.w1
-        w2 = parameters.w2
-        w3 = parameters.w3
-        # parameters for forced dynamics
-        u_alpha_r = parameters.u_alpha_r
-        u_alpha_l = parameters.u_alpha_l
-        w_alpha_r = parameters.w_alpha_r
-        w_alpha_l = parameters.w_alpha_l
-
-        ## Calculate Dynamics
-        # nonlinear Dynamics - autonomous response
-        f_dynamic = np.array([[-u1 * u - u2 * w + u3 * w ** 2], [-w1 * w - w2 * u - w3 * u * w]])  #
-        # input Matrix
-        B = np.array([[u_alpha_r, u_alpha_l], [w_alpha_r, -w_alpha_l]])  #
-        # forced response
-        f_forced = np.matmul(B, V)
-        # acceleration
-        x_dot_dot = f_dynamic + f_forced
-
-        return x_dot_dot
+    def model(
+        commands: PWMCommands, parameters: DynamicModelParameters, u=None, w=None
+    ):
+        """Returns the second derivative of x"""
+        longitudinal_accel, angular_accel = DynamicModel._model_acceleration(
+            commands,
+            parameters,
+            float(u),
+            float(w),
+        )
+        return np.array(
+            [[longitudinal_accel], [angular_accel]],
+            dtype=np.float64,
+        )
 
     def integrate(self, dt: float, commands: PWMCommands) -> "DynamicModel":
-        # previous velocities (v0)
-        linear_angular_prev = geo.linear_angular_from_se2(self.v0)
-        linear_prev = linear_angular_prev[0]
-        longit_prev = linear_prev[0]
-        lateral_prev = linear_prev[1]
-        angular_prev = linear_angular_prev[1]
+        key_prefix = "[lib-dynamics]:dynamic-model/integrate"
+        with _profile(f"{key_prefix}/extract-prev-state"):
+            longit_prev = float(self.v0[0, 2])
+            angular_prev = float(self.v0[1, 0])
 
-        # predict the acceleration of the vehicle
-        x_dot_dot = self.model(commands, self.parameters, u=longit_prev, w=angular_prev)
+        with _profile(f"{key_prefix}/predict-accel"):
+            longitudinal_accel, angular_accel = self._model_acceleration(
+                commands,
+                self.parameters,
+                u=longit_prev,
+                w=angular_prev,
+            )
 
-        # convert the acceleration to velocity by forward euler
-        longitudinal = longit_prev + dt * x_dot_dot[0]
-        angular = angular_prev + dt * x_dot_dot[1]
-        lateral = 0.0
+        with _profile(f"{key_prefix}/integrate-velocity"):
+            longitudinal = longit_prev + dt * longitudinal_accel
+            angular = angular_prev + dt * angular_accel
 
-        linear = [longitudinal[0], lateral]
+        with _profile(f"{key_prefix}/compose-commands-se2"):
+            next_v0 = self._velocity_from_linear_angular(longitudinal, angular)
 
-        # represent this as se(2)
-        commands_se2 = geo.se2_from_linear_angular(linear, angular[0])
+        with _profile(f"{key_prefix}/body-pose-integrate"):
+            next_q0 = self._integrate_pose(self.q0, dt, longitudinal, angular)
 
-        # call the "integrate" function of GenericKinematicsSE2
-        s1 = GenericKinematicsSE2.integrate(self, dt, commands_se2)
+        with _profile(f"{key_prefix}/unpack-integrated-state"):
+            t1 = self.t0 + dt
 
-        # new state
-        c1 = s1.q0, s1.v0
-        t1 = s1.t0
+        with _profile(f"{key_prefix}/solve-wheel-velocities"):
+            d = self.parameters.wheel_distance
+            Rr = self.parameters.wheel_radius_right
+            Rl = self.parameters.wheel_radius_left
+            half_axle_angular = 0.5 * d * angular
+            wR = (longitudinal + half_axle_angular) / Rr
+            wL = (longitudinal - half_axle_angular) / Rl
 
-        # now we compute the axis rotation using the inverse way...
-        # forward = both wheels spin positive
-        # angular_velocity = wR*R_r/d - Wl*R_l/d   # if R rotates more, we increase theta
-        # linear_velocity = (wR*R_r + Wl*R_l)/2
+        with _profile(f"{key_prefix}/accumulate-wheel-angles"):
+            axis_left_rad = self.axis_left_rad + wL * dt
+            axis_right_rad = self.axis_right_rad + wR * dt
 
-        # that is
-        # [ang, lin ] = [ Rr/d -Rl/d; Rr/2 Rl/2] * [wR wL]
-        d = self.parameters.wheel_distance
-        Rr = self.parameters.wheel_radius_right
-        Rl = self.parameters.wheel_radius_left
-        M = np.array([[Rr / d, -Rl / d], [Rr / 2, Rl / 2]])
-        anglin = np.array((angular, longitudinal))
-        MInv = np.linalg.inv(M)
-        wRL = MInv @ anglin
-        wR = float(wRL[0, 0])
-        wL = float(wRL[1, 0])
-
-        axis_left_rad = self.axis_left_rad + wL * dt
-        axis_right_rad = self.axis_right_rad + wR * dt
-
-        return DynamicModel(
-            self.parameters, c1, t1, axis_left_rad=axis_left_rad, axis_right_rad=axis_right_rad
-        )
+        with _profile(f"{key_prefix}/construct-next-state"):
+            return self._from_state_components(
+                self.parameters,
+                next_q0,
+                next_v0,
+                t1,
+                axis_left_rad,
+                axis_right_rad,
+            )
 
 
 # TODO: magic numbers in the prototype of this function
-def wheel_speed_from_pwm_commands(pwm_l: float, pwm_r: float, k: float = 27.0) -> Tuple[float, float]:
+def wheel_speed_from_pwm_commands(
+    pwm_l: float, pwm_r: float, k: float = 27.0
+) -> Tuple[float, float]:
     """
     Returns:
     - omega_l, omega_r      wheels angular speed [rad/s]
