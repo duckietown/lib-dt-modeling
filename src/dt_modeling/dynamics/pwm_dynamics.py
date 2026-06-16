@@ -3,7 +3,7 @@
 import math
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Callable, ContextManager, Optional, Tuple
 
 import geometry as geo
 import numpy as np
@@ -13,11 +13,6 @@ from .generic_kinematics import GenericKinematicsSE2
 from .platform_dynamics import PlatformDynamicsFactory
 from .types import TSE2value
 
-try:
-    from packages.duckiematrix_engine.utils.t2_profiler import T2Profiler
-except Exception:  # pragma: no cover - optional engine profiling hook
-    T2Profiler = None
-
 __all__ = [
     "DynamicModelParameters",
     "DynamicModel",
@@ -25,13 +20,32 @@ __all__ = [
     "get_DB18_nominal",
     "get_DB18_uncalibrated",
     "wheel_speed_from_pwm_commands",
+    "set_profiler",
 ]
 
+# Optional profiling hook. The library intentionally knows nothing about any
+# concrete profiler implementation; consumers (e.g. the duckiematrix engine)
+# inject one via ``set_profiler``. When none is registered, profiling is a no-op.
+ProfilerFactory = Callable[[str], ContextManager]
+_profiler_factory: Optional[ProfilerFactory] = None
 
-def _profile(key: str):
-    if T2Profiler is None:
+
+def set_profiler(factory: Optional[ProfilerFactory]) -> None:
+    """Register a profiling hook used while integrating the dynamics.
+
+    Args:
+        factory: A callable taking a profiling key and returning a context
+            manager that times the wrapped block (e.g. ``T2Profiler.profile``).
+            Pass ``None`` to disable profiling.
+    """
+    global _profiler_factory
+    _profiler_factory = factory
+
+
+def _profile(key: str) -> ContextManager:
+    if _profiler_factory is None:
         return nullcontext()
-    return T2Profiler.profile(key)
+    return _profiler_factory(key)
 
 
 @dataclass
