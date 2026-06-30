@@ -1,7 +1,7 @@
 from typing import cast
 
-import geometry as geo
 import numpy as np
+from dt_modeling.dynamics import se2 as geo
 from dt_modeling.dynamics.generic_kinematics import GenericKinematicsSE2
 from dt_modeling.dynamics.pwm_dynamics import (
     DynamicModel,

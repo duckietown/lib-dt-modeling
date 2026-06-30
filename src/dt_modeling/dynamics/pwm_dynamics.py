@@ -5,12 +5,12 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Callable, ContextManager, Optional, Tuple
 
-import geometry as geo
 import numpy as np
 
 from .dynamics_delay import ApplyDelay
 from .generic_kinematics import GenericKinematicsSE2
 from .platform_dynamics import PlatformDynamicsFactory
+from .se2 import SE2value, se2value
 from .types import TSE2value
 
 __all__ = [
@@ -192,7 +192,7 @@ class DynamicModel(GenericKinematicsSE2):
     def _velocity_from_linear_angular(
         longitudinal: float,
         angular: float,
-    ) -> geo.se2value:
+    ) -> se2value:
         velocity = np.zeros((3, 3), dtype=np.float64)
         velocity[0, 1] = -angular
         velocity[1, 0] = angular
@@ -201,11 +201,11 @@ class DynamicModel(GenericKinematicsSE2):
 
     @staticmethod
     def _integrate_pose(
-        q0: geo.SE2value,
+        q0: SE2value,
         dt: float,
         longitudinal: float,
         angular: float,
-    ) -> geo.SE2value:
+    ) -> SE2value:
         delta_angle = dt * angular
         delta_distance = dt * longitudinal
         if abs(delta_angle) < 1e-8:
@@ -250,8 +250,8 @@ class DynamicModel(GenericKinematicsSE2):
     def _from_state_components(
         cls,
         parameters: DynamicModelParameters,
-        q0: geo.SE2value,
-        v0: geo.se2value,
+        q0: SE2value,
+        v0: se2value,
         t0: float,
         axis_left_rad: float,
         axis_right_rad: float,

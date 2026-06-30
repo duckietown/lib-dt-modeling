@@ -2,8 +2,6 @@ import dataclasses
 
 import numpy as np
 
-import transformations as tr
-
 
 @dataclasses.dataclass
 class Pose2DEstimate:
@@ -15,7 +13,11 @@ class Pose2DEstimate:
 
     @property
     def q(self) -> np.ndarray:
-        return tr.quaternion_from_euler(0, 0, self.theta)
+        # Yaw-only rotation as a [w, x, y, z] quaternion. Matches the previous
+        # transformations.quaternion_from_euler(0, 0, theta): a rotation of
+        # theta about z is cos(theta/2) + sin(theta/2) k.
+        half = self.theta / 2.0
+        return np.array([np.cos(half), 0.0, 0.0, np.sin(half)])
 
     def copy(self) -> 'Pose2DEstimate':
         return Pose2DEstimate(**dataclasses.asdict(self))
