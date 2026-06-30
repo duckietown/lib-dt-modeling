@@ -1,10 +1,10 @@
 # coding=utf-8
 
-import geometry as geo
+from . import se2
 
 # from duckietown_serialization_ds1 import Serializable
 from .platform_dynamics import PlatformDynamics, PlatformDynamicsFactory
-from .types import TSE2value
+from .types import TSE2value, se2v
 
 
 __all__ = ["GenericKinematicsSE2"]
@@ -24,23 +24,23 @@ class GenericKinematicsSE2(PlatformDynamicsFactory, PlatformDynamics): #, Serial
     def __init__(self, c0: TSE2value, t0: float):
         # start at q0, v0
         q0, v0 = c0
-        geo.SE2.belongs(q0)
-        geo.se2.belongs(v0)
+        se2.check_SE2(q0)
+        se2.check_se2(v0)
         self.t0 = t0
         self.v0 = v0
         self.q0 = q0
 
-    def integrate(self, dt: float, commands: geo.se2value) -> "GenericKinematicsSE2":
+    def integrate(self, dt: float, commands: se2v) -> "GenericKinematicsSE2":
         """ commands = velocity in body frame """
         # convert to float
         dt = float(dt)
         # the commands must belong to se(2)
-        geo.se2.belongs(commands)
+        se2.check_se2(commands)
         v = commands
         # suppose we hold v for dt, which pose are we going to?
-        diff = geo.SE2.group_from_algebra(dt * v)  # exponential map
+        diff = se2.exp(dt * v)  # exponential map
         # compute the absolute new pose; applying diff from q0
-        q1 = geo.SE2.multiply(self.q0, diff)
+        q1 = se2.multiply(self.q0, diff)
         # the new configuration
         c1 = q1, v
         # the new time
